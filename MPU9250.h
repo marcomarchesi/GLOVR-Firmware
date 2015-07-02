@@ -53,7 +53,7 @@ int I2C_read(unsigned char device_add, unsigned char reg, unsigned char *data, u
 #define FACTORACC ((float)0.0047900)
 #define FACTORGYR ((float)0.0012195)
 #define FACTORMAG ((float)0.15)
-#define FACTORTEM ((float)0.0029951)
+#define FACTORTEMP ((float)0.0029951)
 
 /**********************************************
  * MPU9250 DEFINITIONS
@@ -188,9 +188,9 @@ int I2C_read(unsigned char device_add, unsigned char reg, unsigned char *data, u
 /**********************************************
  * MPU9250 FUNCTIONS
  **********************************************/
-void MPU9250_Read_Measure_Rough(int *);
-void MPU9250_Read_Measure_Real(float *);
-void MPU9250_Init(void);
+void Inertial_Read_Measure_Rough(int *);
+void Inertial_Read_Measure_Real(float *);
+void MPU9250_AK8963_Init(void);
 
 #endif	/* MPU9250_H */
 

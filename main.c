@@ -54,7 +54,7 @@ int main(void)
     Timer_Init();
     Timer2_Init();
     I2C_init();
-    MPU9250_Init();
+    MPU9250_AK8963_Init();
 
     USB_command_rcv = 0; 
     BT_command_rcv = 0;
@@ -74,7 +74,7 @@ int main(void)
         if(USB_command_rcv & 0x01)
         {
             //printf("1");
-            MPU9250_Read_Measure_Real(imu_data);
+            Inertial_Read_Measure_Real(imu_data);
             //printf("2");
             MadgwickAHRSupdate(imu_data[3],imu_data[4],imu_data[5],imu_data[0],imu_data[1],imu_data[2],imu_data[6],imu_data[7],imu_data[8]);
             rho = acos(q0);
@@ -119,7 +119,7 @@ int main(void)
 
         if(BT_command_rcv & 0x01)
         {
-            MPU9250_Read_Measure_Real(imu_data);
+            Inertial_Read_Measure_Real(imu_data);
             MadgwickAHRSupdate(imu_data[3],imu_data[4],imu_data[5],imu_data[0],imu_data[1],imu_data[2],imu_data[6],imu_data[7],imu_data[8]);
             rho = acos(q0);
             imu_data[9] = rho*2;

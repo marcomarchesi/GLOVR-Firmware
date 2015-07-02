@@ -10,7 +10,8 @@
 //The "Done" variable should be used in the Interrupt routine of I2C module.
 unsigned int Done;
 float acc_matrix[4][3] = {{1,0,0},{0,1,0},{0,0,1},{0,0,0}};
-float gyr_x_offset = 0, gyr_y_offset = 0, gyr_z_offset = 0, mag_x_factor = 1, mag_y_factor = 1, mag_z_factor = 1, mag_x_offset = 0, mag_y_offset = 0, mag_z_offset = 0;
+float temp_offset = 8.5, gyr_x_offset = 0, gyr_y_offset = 0, gyr_z_offset = 0, mag_x_factor = 1, mag_y_factor = 1, mag_z_factor = 1, mag_x_offset = 0, mag_y_offset = 0, mag_z_offset = 0;
+float mag_asa[3];
 
 DEVICE_DRV devicedrv = DEVICE_DRV_DEFAULTS;
 DEVICE_DATA wData;
@@ -68,17 +69,8 @@ void Device_drv(DEVICE_DRV *device, unsigned char DEVICE_ADDRESS)
                 else
                 {
                     rtrycntr=0;
-
-                    if(device->oData->n>1)
-                    {
-                        I2C1TRN=((device->oData->addr)|0x80);
-                        state=state+1;
-                    }
-                    else
-                    {
-                        I2C1TRN=(device->oData->addr);
-                        state=state+1;
-                    }
+                    I2C1TRN=(device->oData->addr);      // Send register address
+                    state=state+1;
 		}
             }
             break;
@@ -287,9 +279,9 @@ int I2C_write_byte(unsigned char device_add, unsigned char reg, unsigned char co
     }
 
     if(devicedrv.cmd == DEVICE_ERR)
-        return 1;
-    else
         return 0;
+    else
+        return 1;
 }
 
 int I2C_write(unsigned char device_add, unsigned char reg, unsigned char *conf, unsigned char num_byte)
@@ -308,9 +300,9 @@ int I2C_write(unsigned char device_add, unsigned char reg, unsigned char *conf, 
     }
 
     if(devicedrv.cmd == DEVICE_ERR)
-        return 1;
-    else
         return 0;
+    else
+        return 1;
 }
 
 int I2C_read_byte(unsigned char device_add, unsigned char reg, unsigned char *data)
@@ -329,9 +321,9 @@ int I2C_read_byte(unsigned char device_add, unsigned char reg, unsigned char *da
     }
 
     if(devicedrv.cmd == DEVICE_ERR)
-        return 1;
-    else
         return 0;
+    else
+        return 1;
 }
 
 int I2C_read(unsigned char device_add, unsigned char reg, unsigned char *data, unsigned char num_byte)
@@ -350,9 +342,9 @@ int I2C_read(unsigned char device_add, unsigned char reg, unsigned char *data, u
     }
 
     if(devicedrv.cmd == DEVICE_ERR)
-        return 1;
-    else
         return 0;
+    else
+        return 1;
 }
 
 /*********************************************************************
@@ -362,7 +354,7 @@ int I2C_read(unsigned char device_add, unsigned char reg, unsigned char *data, u
 // WRITE TO MPU9250 FUNCTION
 void MPU9250_write_reg(unsigned char reg, unsigned char conf)
 {
-    if(I2C_write_byte(MPU9250_ADD, reg, conf))
+    if(!I2C_write_byte(MPU9250_ADD, reg, conf))
         printf("\n\tMPU9250_Write(): WRITE ERROR");
 
     return;
@@ -371,41 +363,64 @@ void MPU9250_write_reg(unsigned char reg, unsigned char conf)
 // WRITE TO AK8963 FUNCTION
 void AK8963_write_reg(unsigned char reg, unsigned char conf)
 {
-    if(I2C_write_byte(AK8963_ADD, reg, conf))
+    if(!I2C_write_byte(AK8963_ADD, reg, conf))
         printf("\n\tAK8963_Write(): WRITE ERROR");
 
     return;
 }
 
+// WRITE TO MPU9250 FUNCTION
+void MPU9250_read_data(unsigned char acc_gyr_temp[14])
+{
+    if(!I2C_read(MPU9250_ADD, ACCEL_XOUT_H, acc_gyr_temp, 14))
+        printf("\n\tMPU9250_read_data(): READ ERROR");
+
+    return;
+}
+
+// WRITE TO AK8963 FUNCTION
+void AK8963_read_data(unsigned char mag[6])
+{
+    unsigned char *ptr, byte_var = 0;
+    ptr = &byte_var;
+
+    AK8963_write_reg(AK8963_CNTL1, 0x11);
+
+    while((byte_var & 0x01) != 0x01)
+    {
+        I2C_read_byte(AK8963_ADD, AK8963_ST1, ptr);
+    }
+    if(!I2C_read(AK8963_ADD, AK8963_HXL, mag, 6))
+        printf("\n\tAK8963_read_data(): READ ERROR");
+
+    return;
+}
+
 // READ MEASURE DATA FUNCTION
-void MPU9250_Read_Measure_Rough(int measure_data[10])
+void Inertial_Read_Measure_Rough(int measure_data[10])
 {
     unsigned int retry = 0;
-    unsigned char rBuff[20] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-//    MPU9250_write_reg(I2C_SLV0_ADDR,AK8963_ADD|0x80); //Set the I2C slave addres of AK8963 and set for read.
-//    MPU9250_write_reg(I2C_SLV0_REG, AK8963_HXL); //I2C slave 0 register address from where to begin data transfer
-//    MPU9250_write_reg(I2C_SLV0_CTRL, 0x87); //Read 6 bytes from the magnetometer
-//    __delay_ms(1);
+    unsigned char acc_gyr_rBuff[14] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned char mag_rBuff[6] = {0, 0, 0, 0, 0, 0};
 
     while(retry<RW_MAX_RETRY)
     {
         if(DATA_RDY)
         {
-            if(I2C_read(MPU9250_ADD, ACCEL_XOUT_H, rBuff, 20))
-                printf("\n\tMPU9250_Read_Measure_Rough(): READ ERROR");
+            MPU9250_read_data(acc_gyr_rBuff);
+            AK8963_read_data(mag_rBuff);
 
             // Data format: measure_data = { acc x | acc y | acc z | gyr x | gyr y | gyr z | mag x | mag y | mag z | temp }
-            measure_data[0] = ((int)(rBuff[0]<<8)|rBuff[1]);
-            measure_data[1] = ((int)(rBuff[2]<<8)|rBuff[3]);
-            measure_data[2] = ((int)(rBuff[4]<<8)|rBuff[5]);
-            measure_data[3] = ((int)(rBuff[8]<<8)|rBuff[9]);
-            measure_data[4] = ((int)(rBuff[10]<<8)|rBuff[11]);
-            measure_data[5] = ((int)(rBuff[12]<<8)|rBuff[13]);
-            measure_data[6] = ((int)(rBuff[15]<<8)|rBuff[14]);
-            measure_data[7] = ((int)(rBuff[17]<<8)|rBuff[16]);
-            measure_data[8] = ((int)(rBuff[19]<<8)|rBuff[18]);
-            measure_data[9] = ((int)(rBuff[6]<<8)|rBuff[7]);
+            measure_data[0] = ((int)(acc_gyr_rBuff[0]<<8)|acc_gyr_rBuff[1]);
+            measure_data[1] = ((int)(acc_gyr_rBuff[2]<<8)|acc_gyr_rBuff[3]);
+            measure_data[2] = ((int)(acc_gyr_rBuff[4]<<8)|acc_gyr_rBuff[5]);
+            measure_data[3] = ((int)(acc_gyr_rBuff[8]<<8)|acc_gyr_rBuff[9]);
+            measure_data[4] = ((int)(acc_gyr_rBuff[10]<<8)|acc_gyr_rBuff[11]);
+            measure_data[5] = ((int)(acc_gyr_rBuff[12]<<8)|acc_gyr_rBuff[13]);
+            measure_data[6] = ((int)(mag_rBuff[1]<<8)|mag_rBuff[0]);
+            measure_data[7] = ((int)(mag_rBuff[3]<<8)|mag_rBuff[2]);
+            measure_data[8] = ((int)(mag_rBuff[5]<<8)|mag_rBuff[4]);
+            measure_data[9] = ((int)(acc_gyr_rBuff[6]<<8)|acc_gyr_rBuff[7]);
 
             return;
         }
@@ -422,12 +437,13 @@ void MPU9250_Read_Measure_Rough(int measure_data[10])
     return;
 }
 
-void MPU9250_Read_Measure_Real(float measure_data[10])
+void Inertial_Read_Measure_Real(float measure_data[10])
 {
     signed int data_rough[10];
 
-    MPU9250_Read_Measure_Rough(data_rough);
+    Inertial_Read_Measure_Rough(data_rough);
 
+    // Data format: measure_data = { acc x | acc y | acc z | gyr x | gyr y | gyr z | mag x | mag y | mag z | temp }
     measure_data[0] = ((data_rough[0] * FACTORACC) * acc_matrix[0][0]) + ((data_rough[1] * FACTORACC) * acc_matrix[1][0]) + ((data_rough[2] * FACTORACC) * acc_matrix[2][0]) + acc_matrix[3][0];
     measure_data[1] = ((data_rough[0] * FACTORACC) * acc_matrix[0][1]) + ((data_rough[1] * FACTORACC) * acc_matrix[1][1]) + ((data_rough[2] * FACTORACC) * acc_matrix[2][1]) + acc_matrix[3][1];
     measure_data[2] = ((data_rough[0] * FACTORACC) * acc_matrix[0][2]) + ((data_rough[1] * FACTORACC) * acc_matrix[1][2]) + ((data_rough[2] * FACTORACC) * acc_matrix[2][2]) + acc_matrix[3][2];
@@ -436,32 +452,20 @@ void MPU9250_Read_Measure_Real(float measure_data[10])
     measure_data[4] = (data_rough[4] * FACTORGYR) + gyr_y_offset;
     measure_data[5] = (data_rough[5] * FACTORGYR) + gyr_z_offset;
 
-    measure_data[6] = ((data_rough[6] * FACTORMAG) * mag_x_factor) + mag_x_offset;
-    measure_data[7] = ((data_rough[7] * FACTORMAG) * mag_y_factor) + mag_y_offset;
-    measure_data[8] = ((data_rough[8] * FACTORMAG) * mag_z_factor) + mag_z_offset;
+    measure_data[6] = ((data_rough[6] * mag_asa[0] * FACTORMAG) * mag_x_factor) + mag_x_offset;
+    measure_data[7] = ((data_rough[7] * mag_asa[1] * FACTORMAG) * mag_y_factor) + mag_y_offset;
+    measure_data[8] = ((data_rough[8] * mag_asa[2] * FACTORMAG) * mag_z_factor) + mag_z_offset;
 
-    measure_data[9] = data_rough[9] * FACTORTEM;
+    measure_data[9] = ((data_rough[9] * FACTORTEMP) - temp_offset) + 21;
 
 }
 
-void MPU9250_Init(void)
+void MPU9250_AK8963_Init(void)
 {
-//    MPU9250_write_reg(PWR_MGMT_1, 0x80); //Reset Device
-//    __delay_ms(200);
-//    MPU9250_write_reg(PWR_MGMT_1, 0x01); //Clock Source
-//    __delay_ms(200);
-//    MPU9250_write_reg(INT_PIN_CFG, 0x02);
-//    __delay_ms(10);
-    //AK8963_write_reg(AK8963_CNTL1, 0x01);
-    //__delay_ms(10);
-
-//    AK8963_write_reg(AK8963_CNTL2, 0x01); //Set magnetometer to 16-bit mode and ContinuousMeasurement mode 2 (100Hz)
-//    __delay_ms(1);
-//    AK8963_write_reg(AK8963_CNTL1, 0x16); //Set magnetometer to 16-bit mode and ContinuousMeasurement mode 2 (100Hz)
-//    __delay_ms(1);
+    unsigned char buff_asa[3];
 
     MPU9250_write_reg(PWR_MGMT_1, 0x80); //Reset Device
-    __delay_ms(200);
+    __delay_ms(100);
     MPU9250_write_reg(PWR_MGMT_1, 0x01); //Clock Source
     __delay_ms(200);
     MPU9250_write_reg(PWR_MGMT_2, 0x00); //Enable Acc and Gyro
@@ -479,50 +483,17 @@ void MPU9250_Init(void)
     MPU9250_write_reg(INT_PIN_CFG, 0x32);
     __delay_ms(10);
     MPU9250_write_reg(INT_ENABLE, 0x01);
-    __delay_ms(100);
+    __delay_ms(10);
 
-//    MPU9250_write_reg(USER_CTRL, 0x20);
-//    __delay_ms(1);
-//    MPU9250_write_reg(I2C_MST_CTRL, 0x4D);
-//    __delay_ms(1);
-
-//    AK8963_write_reg(AK8963_CNTL2, 0x01); //Set magnetometer to 16-bit mode and ContinuousMeasurement mode 2 (100Hz)
-//    __delay_ms(1);
-//    AK8963_write_reg(AK8963_CNTL1, 0x16); //Set magnetometer to 16-bit mode and ContinuousMeasurement mode 2 (100Hz)
-//    __delay_ms(1);
-
-//    MPU9250_write_reg(I2C_SLV0_ADDR, AK8963_ADD);
-//    __delay_ms(1);
-//    MPU9250_write_reg(I2C_SLV0_REG, AK8963_CNTL2);
-//    __delay_ms(1);
-//    MPU9250_write_reg(I2C_SLV0_DO, 0x01); //Reset AK8963
-//    __delay_ms(1);
-//    MPU9250_write_reg(I2C_SLV0_CTRL, 0x81);
-//    __delay_ms(1);
-//    MPU9250_write_reg(I2C_SLV0_REG, AK8963_CNTL1);
-//    __delay_ms(1);
-//    MPU9250_write_reg(I2C_SLV0_DO, 0x16); //Set AK8963 in 16-bit mode and Continuous Measurement 2 mode
-//    __delay_ms(1);
-//    MPU9250_write_reg(I2C_SLV0_CTRL, 0x81);
-
-
-//    // MPU9250 initializzation
-//    MPU9250_write_reg(SMPLRT_DIV, 0x09); //SAMPLE RATE = Internal_Sample_Rate / (1 + SMPLRT_DIV) set to 100Hz
-//    MPU9250_write_reg(CONFIG, 0x01); //FSYNC disabled, replace old data in FIFO whe new is available, DLPF bw = 184Hz
-//    MPU9250_write_reg(GYRO_CONFIG, 0x18); //Gyro Full Scale = 2000dps, Fchoice_b = 0b00
-//    MPU9250_write_reg(ACCEL_CONFIG, 0x18); //Accel Full Scale = 16g
-//    MPU9250_write_reg(ACCEL_CONFIG_2, 0x01); //Accel_fchoice = 1, A_DLPF bw = 184Hz
-//    MPU9250_write_reg(I2C_SLV0_ADDR, 0x8C); //Transfer is a read, Address slave0 is 0x0C
-//    MPU9250_write_reg(I2C_SLV0_REG, AK8963_HXL); //Slave 0 register address from where to begin data transfer
-//    MPU9250_write_reg(I2C_SLV0_CTRL, 0xD6); //Enable reading data from slave0, Swap bytes, 6-Byte to read
-//    MPU9250_write_reg(INT_PIN_CFG, 0x30);
-//
-//    MPU9250_Mag_Write(AK8963_CNTL1, 0x16); //Set magnetometer to 16-bit mode and ContinuousMeasurement mode 2 (100Hz)
-//
-//    MPU9250_write_reg(INT_PIN_CFG, 0x30);
-//    MPU9250_write_reg(INT_ENABLE, 0x01);
-//    MPU9250_write_reg(USER_CTRL, 0x20);
-//    MPU9250_write_reg(PWR_MGMT_1, 0x00);
-//    MPU9250_write_reg(I2C_MST_CTRL, 0xCD);
-    
+    AK8963_write_reg(AK8963_CNTL1, 0x00); //Set magnetometer to 16-bit mode and SingleMeasurement mode
+    __delay_ms(10);
+    AK8963_write_reg(AK8963_CNTL1, 0x0F); //Set magnetometer to 16-bit mode and SingleMeasurement mode
+    __delay_ms(10);
+    if(!I2C_read(AK8963_ADD, AK8963_ASAX, buff_asa, 3)) //Take asa values for sensitivity correction
+        printf("\n\tMPU9250_AK8963_Init(): READ MAGNETOMETER'S ASA ERROR");
+    mag_asa[0] =  (float)((buff_asa[0] - 128)/256.0f) + 1.0f;   // Return x-axis sensitivity adjustment values, etc.
+    mag_asa[1] =  (float)((buff_asa[1] - 128)/256.0f) + 1.0f;
+    mag_asa[2] =  (float)((buff_asa[2] - 128)/256.0f) + 1.0f;
+    AK8963_write_reg(AK8963_CNTL1, 0x00); //Set magnetometer to 16-bit mode and SingleMeasurement mode
+    __delay_ms(10);
 }
